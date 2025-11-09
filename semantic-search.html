@@ -1,0 +1,220 @@
+import React, { useState } from 'react';
+import { Search, FileText, TrendingUp } from 'lucide-react';
+
+const SemanticDocumentSearch = () => {
+  const [results, setResults] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const query = "Environmental impact studies and findings";
+  const documents = [
+    "Gene editing technologies raise ethical questions about human enhancement and designer organisms",
+    "Database indexing strategies significantly impact query performance in large-scale applications",
+    "To reset your password, click the forgot password link on the login page and follow instructions",
+    "We offer a 30-day money-back guarantee on all products with no questions asked",
+    "Market analysis reveals increasing demand for sustainable products among millennial consumers",
+    "Neural network architectures continue evolving with transformer models showing remarkable performance",
+    "Quarterly revenue projections indicate strong growth in emerging markets across Asia-Pacific regions",
+    "Climate change impacts coastal ecosystems through rising sea levels and ocean acidification",
+    "Implementing microservices architecture requires careful consideration of service boundaries and communication patterns"
+  ];
+
+  const cosineSimilarity = (vecA, vecB) => {
+    const dotProduct = vecA.reduce((sum, a, i) => sum + a * vecB[i], 0);
+    const magnitudeA = Math.sqrt(vecA.reduce((sum, a) => sum + a * a, 0));
+    const magnitudeB = Math.sqrt(vecB.reduce((sum, b) => sum + b * b, 0));
+    return dotProduct / (magnitudeA * magnitudeB);
+  };
+
+  const performSemanticSearch = async () => {
+    setLoading(true);
+    setError(null);
+    setResults(null);
+
+    try {
+      // Generate embedding for query
+      const queryResponse = await fetch("https://api.openai.com/v1/embeddings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "text-embedding-3-small",
+          input: query
+        })
+      });
+
+      if (!queryResponse.ok) {
+        throw new Error(`Failed to generate query embedding: ${queryResponse.status}`);
+      }
+
+      const queryData = await queryResponse.json();
+      const queryEmbedding = queryData.data[0].embedding;
+
+      // Generate embeddings for all documents
+      const docsResponse = await fetch("https://api.openai.com/v1/embeddings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "text-embedding-3-small",
+          input: documents
+        })
+      });
+
+      if (!docsResponse.ok) {
+        throw new Error(`Failed to generate document embeddings: ${docsResponse.status}`);
+      }
+
+      const docsData = await docsResponse.json();
+      const docEmbeddings = docsData.data.map(d => d.embedding);
+
+      // Calculate cosine similarity for each document
+      const similarities = docEmbeddings.map((docEmb, index) => ({
+        index,
+        score: cosineSimilarity(queryEmbedding, docEmb),
+        document: documents[index]
+      }));
+
+      // Sort by similarity score (highest first)
+      similarities.sort((a, b) => b.score - a.score);
+
+      // Get top 3
+      const top3 = similarities.slice(0, 3);
+      const top3Indices = top3.map(item => item.index);
+
+      setResults({
+        topDocuments: top3,
+        indices: top3Indices,
+        allScores: similarities
+      });
+
+    } catch (err) {
+      setError(err.message);
+      console.error('Search error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-8">
+      <div className="max-w-6xl mx-auto">
+        <div className="bg-white rounded-xl shadow-lg p-8 mb-6">
+          <div className="flex items-center gap-3 mb-6">
+            <FileText className="w-8 h-8 text-indigo-600" />
+            <h1 className="text-3xl font-bold text-gray-800">TechDocs Enterprise</h1>
+          </div>
+          <p className="text-gray-600 mb-2">Semantic Document Search System</p>
+          <p className="text-sm text-gray-500">Transaction ID: TXN-23F2005452-7680</p>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-lg p-8 mb-6">
+          <h2 className="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
+            <Search className="w-5 h-5" />
+            Query
+          </h2>
+          <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-6">
+            <p className="text-gray-800 font-medium">{query}</p>
+          </div>
+
+          <button
+            onClick={performSemanticSearch}
+            disabled={loading}
+            className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center gap-2"
+          >
+            {loading ? (
+              <>
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                Processing...
+              </>
+            ) : (
+              <>
+                <Search className="w-5 h-5" />
+                Run Semantic Search
+              </>
+            )}
+          </button>
+
+          {error && (
+            <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-4">
+              <p className="text-red-800 font-medium">Error: {error}</p>
+            </div>
+          )}
+        </div>
+
+        {results && (
+          <>
+            <div className="bg-white rounded-xl shadow-lg p-8 mb-6">
+              <h2 className="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-green-600" />
+                Top 3 Most Relevant Documents
+              </h2>
+              
+              <div className="bg-green-50 border-2 border-green-500 rounded-lg p-6 mb-6">
+                <p className="text-sm text-gray-600 mb-2">Result (JSON Array):</p>
+                <p className="text-2xl font-mono font-bold text-gray-800">
+                  {JSON.stringify(results.indices)}
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                {results.topDocuments.map((doc, rank) => (
+                  <div key={doc.index} className="border border-gray-200 rounded-lg p-4 hover:border-indigo-300 transition-colors">
+                    <div className="flex items-start gap-4">
+                      <div className="flex-shrink-0">
+                        <div className="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center">
+                          <span className="text-xl font-bold text-indigo-600">#{rank + 1}</span>
+                        </div>
+                      </div>
+                      <div className="flex-grow">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm font-medium">
+                            Document {doc.index}
+                          </span>
+                          <span className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-sm font-semibold">
+                            Similarity: {(doc.score * 100).toFixed(2)}%
+                          </span>
+                        </div>
+                        <p className="text-gray-700">{doc.document}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-lg p-8">
+              <h2 className="text-xl font-semibold text-gray-800 mb-4">All Document Rankings</h2>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b-2 border-gray-200">
+                      <th className="text-left py-3 px-4 text-gray-600 font-semibold">Rank</th>
+                      <th className="text-left py-3 px-4 text-gray-600 font-semibold">Doc Index</th>
+                      <th className="text-left py-3 px-4 text-gray-600 font-semibold">Similarity Score</th>
+                      <th className="text-left py-3 px-4 text-gray-600 font-semibold">Document Text</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {results.allScores.map((doc, rank) => (
+                      <tr key={doc.index} className={`border-b border-gray-100 ${rank < 3 ? 'bg-indigo-50' : ''}`}>
+                        <td className="py-3 px-4 font-medium text-gray-700">{rank + 1}</td>
+                        <td className="py-3 px-4 font-mono text-gray-700">{doc.index}</td>
+                        <td className="py-3 px-4 font-semibold text-indigo-600">{doc.score.toFixed(4)}</td>
+                        <td className="py-3 px-4 text-gray-600 text-sm">{doc.document}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default SemanticDocumentSearch;
