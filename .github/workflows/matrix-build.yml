@@ -1,0 +1,146 @@
+name: Multi-Platform Matrix Build
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  matrix-build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            node-version: '18'
+            variant: 'ubuntu-node18'
+          - os: ubuntu-latest
+            node-version: '20'
+            variant: 'ubuntu-node20'
+          - os: macos-latest
+            node-version: '18'
+            variant: 'macos-node18'
+          - os: windows-latest
+            node-version: '18'
+            variant: 'windows-node18'
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: matrix-8bf96b7
+        run: |
+          echo "==================================="
+          echo "Matrix Build Configuration"
+          echo "==================================="
+          echo "OS: ${{ matrix.os }}"
+          echo "Node Version: ${{ matrix.node-version }}"
+          echo "Variant: ${{ matrix.variant }}"
+          echo "==================================="
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      
+      - name: Display environment information
+        run: |
+          node --version
+          npm --version
+          echo "Runner OS: ${{ runner.os }}"
+          echo "Runner Architecture: ${{ runner.arch }}"
+      
+      - name: Create build directory
+        run: mkdir -p build-output
+      
+      - name: Generate build artifact
+        shell: bash
+        run: |
+          cat > build-output/build-info.json << EOF
+          {
+            "variant": "${{ matrix.variant }}",
+            "os": "${{ matrix.os }}",
+            "nodeVersion": "${{ matrix.node-version }}",
+            "runnerOS": "${{ runner.os }}",
+            "runnerArch": "${{ runner.arch }}",
+            "buildTime": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "gitSha": "${{ github.sha }}",
+            "workflow": "${{ github.workflow }}",
+            "runNumber": "${{ github.run_number }}"
+          }
+          EOF
+          
+          echo "Build completed successfully for ${{ matrix.variant }}" > build-output/build-log.txt
+          echo "Timestamp: $(date)" >> build-output/build-log.txt
+          echo "Node version: $(node --version)" >> build-output/build-log.txt
+          echo "NPM version: $(npm --version)" >> build-output/build-log.txt
+      
+      - name: Create sample application output
+        shell: bash
+        run: |
+          cat > build-output/app-output.txt << EOF
+          ============================================
+          Application Build Output
+          ============================================
+          Platform: ${{ matrix.os }}
+          Node.js: ${{ matrix.node-version }}
+          Variant: ${{ matrix.variant }}
+          
+          Build Status: SUCCESS
+          Build Number: ${{ github.run_number }}
+          Commit SHA: ${{ github.sha }}
+          
+          Generated at: $(date)
+          ============================================
+          EOF
+      
+      - name: Verify artifact contents
+        shell: bash
+        run: |
+          echo "Contents of build-output directory:"
+          ls -la build-output/
+          echo ""
+          echo "build-info.json content:"
+          cat build-output/build-info.json
+          echo ""
+          echo "build-log.txt content:"
+          cat build-output/build-log.txt
+      
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-8bf96b7-${{ matrix.variant }}
+          path: build-output/
+          retention-days: 7
+          if-no-files-found: error
+  
+  collect-artifacts:
+    needs: matrix-build
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-builds
+      
+      - name: Display all artifacts
+        run: |
+          echo "==================================="
+          echo "All Build Artifacts Summary"
+          echo "==================================="
+          find all-builds -type f -exec echo "File: {}" \; -exec cat {} \; -exec echo "" \;
+      
+      - name: Create summary report
+        run: |
+          echo "# Matrix Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Artifacts Generated" >> $GITHUB_STEP_SUMMARY
+          ls -1 all-builds/ | while read artifact; do
+            echo "- \`$artifact\`" >> $GITHUB_STEP_SUMMARY
+          done
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Total artifacts: $(ls -1 all-builds/ | wc -l)" >> $GITHUB_STEP_SUMMARY
